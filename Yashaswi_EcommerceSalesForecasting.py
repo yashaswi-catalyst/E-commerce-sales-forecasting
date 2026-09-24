@@ -159,7 +159,7 @@ def load_data(filepath: str = DATA_PATH) -> pd.DataFrame:
     # Parse dates
     for date_col in ("Order Date", "Ship Date"):
         if date_col in df.columns:
-            df[date_col] = pd.to_datetime(df[date_col], infer_datetime_format=True, errors="coerce")
+            df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
 
     # Ensure numeric types
     for num_col in ("Sales", "Profit", "Quantity", "Discount"):

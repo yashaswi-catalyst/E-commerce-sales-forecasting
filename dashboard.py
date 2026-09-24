@@ -92,6 +92,7 @@ st.markdown("""
     [data-testid="stSidebar"] .stMarkdown p { color: #e2e8f0; }
     [data-testid="stSidebar"] label { color: #e2e8f0 !important; }
 
+    /* ── KPI cards ────────────────────────────────────────────────── */
     .kpi-card {
         background: white;
         border-radius: 10px;
@@ -101,60 +102,149 @@ st.markdown("""
         margin-bottom: 10px;
     }
     .kpi-label {
-        font-size: 12px; color: #6b7280; font-weight: 600;
+        font-size: 12px; color: #374151; font-weight: 600;
         text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
     }
-    .kpi-value { font-size: 26px; font-weight: 700; color: #1f2328; line-height: 1.2; }
-    .kpi-delta { font-size: 13px; color: #6b7280; margin-top: 4px; }
-    .kpi-positive { color: #2d6a4f; }
-    .kpi-negative { color: #c1121f; }
+    .kpi-value  { font-size: 26px; font-weight: 700; color: #111827; line-height: 1.2; }
+    .kpi-delta  { font-size: 13px; color: #374151; margin-top: 4px; }
+    .kpi-positive { color: #166534 !important; font-weight: 600; }
+    .kpi-negative { color: #991b1b !important; font-weight: 600; }
 
+    /* ── Section headings ─────────────────────────────────────────── */
     .section-header {
         font-size: 18px; font-weight: 700; color: #1f4e79;
         border-bottom: 2px solid #e5e7eb;
         padding-bottom: 8px; margin-top: 28px; margin-bottom: 16px;
     }
+
+    /* ── Page titles ──────────────────────────────────────────────── */
+    .page-title    { font-size: 28px; font-weight: 800; color: #1f4e79; margin-bottom: 4px; }
+    .page-subtitle { font-size: 14px; color: #374151; margin-bottom: 24px; }
+
+    /* ── Executive insight cards (blue) ───────────────────────────── */
     .insight-card {
-        background: #f0f7ff; border-left: 4px solid #2e86ab;
-        border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px;
+        background: #e8f4fd;
+        border-left: 4px solid #1d6fa3;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #1a2e40;          /* explicit dark text */
     }
+    .insight-card strong { color: #1a2e40; }
+    .insight-card small  { color: #2c4a5e; display: block; margin-top: 3px; }
+
+    /* ── Risk cards ───────────────────────────────────────────────── */
     .risk-card-high {
-        background: #fff0f0; border-left: 4px solid #c1121f;
-        border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px;
+        background: #fde8e8;
+        border-left: 5px solid #991b1b;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #1f1f1f;          /* near-black body */
     }
+    .risk-card-high strong { color: #7f1d1d; }   /* dark red title */
+    .risk-card-high em     { color: #1f1f1f; font-style: italic; }
+    .risk-card-high small  { color: #374151; display: block; margin-top: 4px; }
+
     .risk-card-medium {
-        background: #fff8e6; border-left: 4px solid #f18f01;
-        border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px;
+        background: #fef3c7;
+        border-left: 5px solid #92400e;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #1f1f1f;
     }
+    .risk-card-medium strong { color: #78350f; }  /* dark amber title */
+    .risk-card-medium em     { color: #1f1f1f; font-style: italic; }
+    .risk-card-medium small  { color: #374151; display: block; margin-top: 4px; }
+
     .risk-card-low {
-        background: #f0f4f8; border-left: 4px solid #6b7280;
-        border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px;
+        background: #e9ecef;
+        border-left: 5px solid #374151;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #1f1f1f;
     }
+    .risk-card-low strong { color: #1f2937; }     /* dark grey title */
+    .risk-card-low em     { color: #1f1f1f; font-style: italic; }
+    .risk-card-low small  { color: #374151; display: block; margin-top: 4px; }
+
+    /* ── Opportunity cards (green) ────────────────────────────────── */
     .opp-card {
-        background: #f0faf4; border-left: 4px solid #2d6a4f;
-        border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px;
+        background: #dcfce7;
+        border-left: 5px solid #15803d;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #14291e;          /* very dark green-black */
     }
+    .opp-card strong { color: #14532d; }          /* dark green title */
+    .opp-card em     { color: #14291e; font-style: italic; }
+    .opp-card small  { color: #1a3626; display: block; margin-top: 4px; }
+
+    /* ── Action cards (purple) ────────────────────────────────────── */
     .action-card {
-        background: #f5f0ff; border-left: 4px solid #7c5cd8;
-        border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; font-size: 14px;
+        background: #ede9fe;
+        border-left: 5px solid #5b21b6;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #1e1b2e;          /* near-black */
     }
+    .action-card strong { color: #4c1d95; }       /* dark purple title/number */
+    .action-card small  { color: #2d2040; display: block; margin-top: 3px; }
+
+    /* ── Disclaimer box ───────────────────────────────────────────── */
     .disclaimer {
-        background: #fefce8; border: 1px solid #fde68a; border-radius: 6px;
-        padding: 12px 16px; font-size: 12px; color: #6b7280; margin: 12px 0;
+        background: #fefce8;
+        border: 1px solid #ca8a04;
+        border-radius: 6px;
+        padding: 12px 16px;
+        font-size: 13px;
+        color: #3b2f00;          /* dark amber text — was #6b7280 (too faint) */
+        margin: 12px 0;
     }
+    .disclaimer strong { color: #3b2f00; }
+
+    /* ── Staleness warning ────────────────────────────────────────── */
     .stale-warning {
-        background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;
-        padding: 12px 16px; font-size: 13px; color: #856404; margin: 10px 0;
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 6px;
+        padding: 12px 16px;
+        font-size: 13px;
+        color: #4b3600;          /* darker than #856404 for better contrast */
+        margin: 10px 0;
     }
+    .stale-warning strong { color: #4b3600; }
+
+    /* ── Info / model data box ────────────────────────────────────── */
     .info-box {
-        background: #f0f4f8; border-radius: 8px;
-        padding: 14px 18px; font-size: 13px; color: #374151;
+        background: #e8ecf0;
+        border: 1px solid #c9d0d9;
+        border-radius: 8px;
+        padding: 14px 18px;
+        font-size: 13px;
+        color: #1f2937;          /* dark gray — was #374151 (OK but reinforced) */
+        line-height: 1.8;
     }
-    .page-title { font-size: 28px; font-weight: 800; color: #1f4e79; margin-bottom: 4px; }
-    .page-subtitle { font-size: 14px; color: #6b7280; margin-bottom: 24px; }
+    .info-box strong { color: #111827; }
+
+    /* ── Helper / subtext ────────────────────────────────────────── */
+    .helper-text {
+        font-size: 13px;
+        color: #374151;          /* dark enough — use this class instead of inline faint gray */
+    }
 
     #MainMenu { visibility: hidden; }
-    footer { visibility: hidden; }
+    footer     { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -297,14 +387,28 @@ def apply_filters(feat_df: pd.DataFrame, f: dict) -> pd.DataFrame:
 # =============================================================================
 def fig_layout(fig, title: str = "", height: int = 360):
     fig.update_layout(
-        title=dict(text=title, font=dict(size=15, color="#1f4e79"), x=0),
+        title=dict(text=title, font=dict(size=15, color="#1f4e79",
+                   family="system-ui, sans-serif"), x=0),
         height=height,
-        plot_bgcolor="white", paper_bgcolor="white",
-        font=dict(family="system-ui, -apple-system, sans-serif", size=12, color="#374151"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        # Dark #1f2937 ensures axis labels, tick text, legends are always readable
+        font=dict(family="system-ui, -apple-system, sans-serif", size=12, color="#1f2937"),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+            font=dict(color="#1f2937", size=12),
+        ),
         margin=dict(l=20, r=20, t=50, b=20),
-        xaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False),
-        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False),
+        xaxis=dict(
+            showgrid=True, gridcolor="#e5e7eb", zeroline=False,
+            tickfont=dict(color="#1f2937"),
+            title_font=dict(color="#1f2937"),
+        ),
+        yaxis=dict(
+            showgrid=True, gridcolor="#e5e7eb", zeroline=False,
+            tickfont=dict(color="#1f2937"),
+            title_font=dict(color="#1f2937"),
+        ),
     )
     return fig
 
@@ -492,19 +596,28 @@ def page_executive_overview(filtered_df, monthly_all, insights):
             line=dict(color=COLORS["accent"], width=2.5),
         ), secondary_y=True)
         fig.update_layout(
-            title="Annual Revenue vs Profit Margin",
+            title=dict(text="Annual Revenue vs Profit Margin",
+                       font=dict(size=15, color="#1f4e79")),
             height=340, plot_bgcolor="white", paper_bgcolor="white",
-            font=dict(family="system-ui, sans-serif", size=12),
+            font=dict(family="system-ui, sans-serif", size=12, color="#1f2937"),
+            legend=dict(font=dict(color="#1f2937")),
             margin=dict(l=20, r=20, t=50, b=20),
         )
-        fig.update_yaxes(title_text="Revenue ($)", tickprefix="$", tickformat=",.0f", secondary_y=False)
-        fig.update_yaxes(title_text="Profit Margin (%)", secondary_y=True)
+        fig.update_yaxes(
+            title_text="Revenue ($)", tickprefix="$", tickformat=",.0f",
+            secondary_y=False,
+            title_font=dict(color="#1f2937"), tickfont=dict(color="#1f2937"),
+        )
+        fig.update_yaxes(
+            title_text="Profit Margin (%)", secondary_y=True,
+            title_font=dict(color="#1f2937"), tickfont=dict(color="#1f2937"),
+        )
         st.plotly_chart(fig, use_container_width=True)
 
     # --- EXECUTIVE INSIGHTS ---
     st.markdown('<div class="section-header">Executive Insights</div>', unsafe_allow_html=True)
     st.markdown(
-        "<small style='color:#6b7280'>Dynamically generated from the loaded dataset. "
+        "<small style='color:#374151; font-size:13px;'>Dynamically generated from the loaded dataset. "
         "All associations are stated as observed patterns — not causal claims.</small>",
         unsafe_allow_html=True,
     )
@@ -983,7 +1096,7 @@ def page_forecast_risk_action(pipeline):
     # ─────────────────────────────────────────────────────────────────────────
     st.markdown('<div class="section-header">⚠ Business Risks</div>', unsafe_allow_html=True)
     st.markdown(
-        "<small style='color:#6b7280'>Each risk is identified using an explicitly defined detection rule "
+        "<small style='color:#374151; font-size:13px;'>Each risk is identified using an explicitly defined detection rule "
         "applied to the loaded dataset.</small>",
         unsafe_allow_html=True,
     )
@@ -1064,7 +1177,7 @@ def page_forecast_risk_action(pipeline):
     # ─────────────────────────────────────────────────────────────────────────
     st.markdown('<div class="section-header">🎯 Recommended Actions</div>', unsafe_allow_html=True)
     st.markdown(
-        "<small style='color:#6b7280'>These recommendations are evidence-based hypotheses for "
+        "<small style='color:#374151; font-size:13px;'>These recommendations are evidence-based hypotheses for "
         "management investigation and testing. They are not guaranteed outcomes.</small>",
         unsafe_allow_html=True,
     )
