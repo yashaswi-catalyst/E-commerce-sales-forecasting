@@ -27,7 +27,7 @@ cells.append(md("""# 🛒 AI-Powered E-Commerce Sales Forecasting & Profit Optim
 | **Project**   | AI-Powered E-Commerce Sales Forecasting & Profit Optimization Dashboard |
 | **Type**      | Business Intelligence + Machine Learning |
 | **Dataset**   | Sample Superstore Retail Transactions |
-| **Author**    | [Your Name] |
+| **Author**    | Yashaswi |
 | **Program**   | IBM SkillsBuild Data Analytics with AI |
 
 ---
@@ -139,12 +139,13 @@ that all required columns are present.
 """))
 
 cells.append(code("""# Import the shared pipeline module
-from YourName_EcommerceSalesForecasting import (
+from Yashaswi_EcommerceSalesForecasting import (
     DATA_PATH, load_data, validate_columns,
     clean_data, create_features, calculate_kpis,
     create_monthly_series, create_forecast_features,
     train_forecast_models, evaluate_models, select_best_model,
-    save_model, load_model, generate_forecast,
+    refit_selected_model, save_model, load_model,
+    generate_backtest, generate_future_forecast,
     generate_business_insights, identify_risks, identify_opportunities,
     analyze_profitability, chronological_split, FEATURE_COLS,
     MODEL_PATH,
@@ -693,33 +694,46 @@ eval_df.style.background_gradient(subset=['MAE','RMSE'], cmap='RdYlGn_r') \\
                       'R2': '{:.4f}', 'MAPE': '{:.2f}%'})
 """))
 
-cells.append(code("""# Select best model
-best_name, best_model = select_best_model(eval_df, trained_models, primary_metric='MAE')
+cells.append(code("""# Select best model (by lowest MAE on test set)
+best_name, eval_model = select_best_model(eval_df, trained_models, primary_metric='MAE')
 print(f'\\nSelected model: {best_name}')
 print(f'MAE  = ${eval_df.loc[best_name, \"MAE\"]:,.0f}')
 print(f'RMSE = ${eval_df.loc[best_name, \"RMSE\"]:,.0f}')
 print(f'R²   = {eval_df.loc[best_name, \"R2\"]:.4f}')
+
+# Refit selected model on ALL historical data for future forecasting
+# Evaluation metrics above remain those from the held-out test set only.
+final_model = refit_selected_model(best_name, forecast_feat_df, feature_cols)
+print(f'\\nRefit {best_name} on all {len(forecast_feat_df)} historical observations.')
+print('This final model is used for future forecasting only.')
 """))
 
-cells.append(code("""# Visualise predictions vs actual on test set
+cells.append(code("""# Backtest: predictions on TEST PERIOD ONLY (not training data)
+# This uses eval_model — trained on training set only.
+bt_df = generate_backtest(eval_model, test_df, feature_cols)
+print(f'Backtest rows (test period only): {len(bt_df)}')
+print(f'Test period: {bt_df[\"month_dt\"].min().date()} to {bt_df[\"month_dt\"].max().date()}')
+
+# Visualise backtest on test period
 X_test = test_df[feature_cols]
-y_pred = best_model.predict(X_test)
+y_pred_test = eval_model.predict(X_test)
 
 fig, axes = plt.subplots(1, 2, figsize=(16, 5))
 
 axes[0].plot(test_df['month_dt'], test_df['total_sales'],
-             color='#1f4e79', linewidth=2.5, label='Actual', marker='o')
-axes[0].plot(test_df['month_dt'], y_pred,
-             color='#f18f01', linewidth=2.5, label=f'{best_name} Prediction',
+             color='#1f4e79', linewidth=2.5, label='Actual Sales', marker='o')
+axes[0].plot(bt_df['month_dt'], bt_df['predicted'],
+             color='#e07b39', linewidth=2.5, label='Backtest Prediction (Test Period)',
              linestyle='--', marker='s')
-axes[0].set_title(f'Test Period: Actual vs {best_name}', fontsize=13, fontweight='bold')
+axes[0].set_title(f'Test Period: Actual vs Backtest Prediction ({best_name})',
+                  fontsize=13, fontweight='bold')
 axes[0].set_ylabel('Monthly Sales ($)')
 axes[0].legend()
 
-residuals = test_df['total_sales'].values - y_pred
-axes[1].scatter(y_pred, residuals, alpha=0.6, color='#7c5cd8', edgecolors='white', s=60)
+residuals = test_df['total_sales'].values - y_pred_test
+axes[1].scatter(y_pred_test, residuals, alpha=0.6, color='#7c5cd8', edgecolors='white', s=60)
 axes[1].axhline(0, color='red', linestyle='--', linewidth=1.5)
-axes[1].set_title('Residual Plot', fontsize=13, fontweight='bold')
+axes[1].set_title('Residual Plot (Test Period)', fontsize=13, fontweight='bold')
 axes[1].set_xlabel('Predicted Sales ($)')
 axes[1].set_ylabel('Residual ($)')
 
@@ -733,7 +747,7 @@ plt.show()
 cells.append(md("---\n## 13. Save Selected Model"))
 
 cells.append(code("""model_path = os.path.join('..', 'models', 'sales_forecast_model.joblib')
-save_model(best_model, best_name, eval_df, feature_cols, monthly, filepath=model_path)
+save_model(final_model, best_name, eval_df, feature_cols, monthly, filepath=model_path)
 print(f'Model saved: {model_path}')
 
 # Verify it can be reloaded
@@ -747,49 +761,61 @@ print(f'Reload check — model name: {payload[\"model_name\"]}, trained at: {pay
 cells.append(md("""---
 ## 14. Forecast Generation
 
-The selected model forecasts future monthly sales by iterating one step ahead,
-feeding each prediction back as a lag feature for the next period.
+### Correct ML Workflow
+1. **Chronological train/test split** — earlier 80% for training, latest 20% for testing
+2. **Train candidates** on training set
+3. **Evaluate** on held-out test set → select best model (lowest MAE)
+4. **Refit selected model** on ALL historical data (already done above as `final_model`)
+5. **Backtest** = predictions on test period only (shown above)
+6. **Future forecast** = iterative one-step-ahead predictions from `final_model`
 
-> **Disclaimer:** Forecast values are estimates produced by the selected model and
-> are subject to uncertainty. They should not be treated as guaranteed business outcomes.
+> **Disclaimer:** Future forecast values are estimates produced by the final model
+> and are subject to uncertainty. They are not guaranteed business outcomes.
 """))
 
 cells.append(code("""FORECAST_HORIZON = 6  # months
 
-forecast_df = generate_forecast(
-    best_model, forecast_feat_df, monthly,
+# Future forecast uses the REFIT model (trained on all historical data)
+fc_df = generate_future_forecast(
+    final_model, monthly,
     horizon=FORECAST_HORIZON, feature_cols=feature_cols,
 )
 
-future = forecast_df[forecast_df['type'] == 'Forecast'][['month_dt','predicted']].copy()
-future.columns = ['Month', 'Forecast Sales ($)']
-future['Month'] = future['Month'].dt.strftime('%B %Y')
-future['Forecast Sales ($)'] = future['Forecast Sales ($)'].apply(lambda v: f'${v:,.0f}')
-print(f'\\nForecasted months ({FORECAST_HORIZON}-month horizon):')
-print(future.to_string(index=False))
+print(f'Future forecast ({FORECAST_HORIZON}-month horizon):')
+disp = fc_df[['month_dt','predicted']].copy()
+disp.columns = ['Month', 'Forecast Sales ($)']
+disp['Month'] = disp['Month'].dt.strftime('%B %Y')
+disp['Forecast Sales ($)'] = disp['Forecast Sales ($)'].apply(lambda v: f'${v:,.0f}')
+print(disp.to_string(index=False))
 """))
 
 cells.append(code("""fig, ax = plt.subplots(figsize=(16, 5))
 
-actual_rows   = forecast_df[forecast_df['type'] == 'Actual']
-backtest_rows = forecast_df[forecast_df['type'] == 'Backtest']
-fc_rows       = forecast_df[forecast_df['type'] == 'Forecast']
+# All historical actuals
+ax.plot(monthly['month_dt'], monthly['total_sales'],
+        color='#1f4e79', linewidth=2.5, label='Actual Sales', marker='o', markersize=4)
 
-ax.plot(actual_rows['month_dt'], actual_rows['actual'],
-        color='#1f4e79', linewidth=2.5, label='Actual (Historical)', marker='o', markersize=4)
-ax.plot(backtest_rows['month_dt'], backtest_rows['actual'],
-        color='#1f4e79', linewidth=1.5, linestyle=':', label='Actual (Test Period)', marker='o', markersize=3)
-ax.plot(backtest_rows['month_dt'], backtest_rows['predicted'],
-        color='#2e86ab', linewidth=2, linestyle='--', label='Model Backtest', marker='s', markersize=5)
-if len(fc_rows) > 0:
-    ax.plot(fc_rows['month_dt'], fc_rows['predicted'],
-            color='#7c5cd8', linewidth=2.5, linestyle='--', label=f'Forecast ({FORECAST_HORIZON}M)',
+# Backtest: test period only
+ax.plot(bt_df['month_dt'], bt_df['predicted'],
+        color='#e07b39', linewidth=2, linestyle='--',
+        label='Backtest Prediction (Test Period)', marker='s', markersize=5)
+
+# Future forecast
+if len(fc_df) > 0:
+    ax.plot(fc_df['month_dt'], fc_df['predicted'],
+            color='#7c5cd8', linewidth=2.5, linestyle='--',
+            label=f'Future Forecast ({FORECAST_HORIZON}M)',
             marker='D', markersize=7)
-    ax.axvspan(fc_rows['month_dt'].min(), fc_rows['month_dt'].max(),
+    ax.axvspan(fc_df['month_dt'].min(), fc_df['month_dt'].max(),
                alpha=0.08, color='#7c5cd8', label='Forecast Window')
 
-ax.set_title(f'Sales Forecast — Actual · Backtest · Future ({FORECAST_HORIZON}-month horizon)',
-             fontsize=14, fontweight='bold')
+# Highlight test period
+ax.axvspan(test_df['month_dt'].min(), test_df['month_dt'].max(),
+           alpha=0.07, color='#e07b39', label='Test Period')
+
+ax.set_title(
+    f'Sales Forecast — Actual Sales · Backtest Prediction (Test) · Future Forecast ({FORECAST_HORIZON}M)',
+    fontsize=13, fontweight='bold')
 ax.set_ylabel('Monthly Sales ($)')
 ax.legend(loc='upper left', fontsize=10)
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
@@ -932,7 +958,7 @@ nb.metadata = {
 out_path = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     'notebooks',
-    'YourName_EcommerceSalesForecasting.ipynb',
+    'Yashaswi_EcommerceSalesForecasting.ipynb',
 )
 os.makedirs(os.path.dirname(out_path), exist_ok=True)
 

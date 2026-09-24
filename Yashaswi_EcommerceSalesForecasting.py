@@ -3,7 +3,7 @@
 AI-Powered E-Commerce Sales Forecasting & Profit Optimization
 IBM SkillsBuild Data Analytics with AI Academic Internship
 =============================================================================
-Author  : [Your Name]
+Author  : Yashaswi
 Dataset : Sample Superstore (retail transaction dataset)
 Purpose : End-to-end analytics pipeline — data loading, cleaning, EDA,
           KPI calculation, feature engineering, ML forecasting, insight
@@ -18,6 +18,7 @@ IMPORTANT: All metrics, insights and forecast outputs are computed
 # Standard library imports
 # ---------------------------------------------------------------------------
 import os
+import hashlib
 import warnings
 import logging
 from datetime import datetime, timedelta
@@ -55,31 +56,31 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Configurable paths
 # ---------------------------------------------------------------------------
-DATA_PATH = os.path.join("data", "Superstore.csv")
+DATA_PATH  = os.path.join("data", "Superstore.csv")
 MODEL_PATH = os.path.join("models", "sales_forecast_model.joblib")
 
 # Column name aliases — map common spelling variations to canonical names
 COLUMN_ALIASES = {
-    "order date":       "Order Date",
-    "orderdate":        "Order Date",
-    "ship date":        "Ship Date",
-    "shipdate":         "Ship Date",
-    "customer id":      "Customer ID",
-    "customerid":       "Customer ID",
-    "customer name":    "Customer Name",
-    "customername":     "Customer Name",
-    "order id":         "Order ID",
-    "orderid":          "Order ID",
-    "product id":       "Product ID",
-    "productid":        "Product ID",
-    "product name":     "Product Name",
-    "productname":      "Product Name",
-    "sub-category":     "Sub-Category",
-    "subcategory":      "Sub-Category",
-    "ship mode":        "Ship Mode",
-    "shipmode":         "Ship Mode",
-    "postal code":      "Postal Code",
-    "postalcode":       "Postal Code",
+    "order date":    "Order Date",
+    "orderdate":     "Order Date",
+    "ship date":     "Ship Date",
+    "shipdate":      "Ship Date",
+    "customer id":   "Customer ID",
+    "customerid":    "Customer ID",
+    "customer name": "Customer Name",
+    "customername":  "Customer Name",
+    "order id":      "Order ID",
+    "orderid":       "Order ID",
+    "product id":    "Product ID",
+    "productid":     "Product ID",
+    "product name":  "Product Name",
+    "productname":   "Product Name",
+    "sub-category":  "Sub-Category",
+    "subcategory":   "Sub-Category",
+    "ship mode":     "Ship Mode",
+    "shipmode":      "Ship Mode",
+    "postal code":   "Postal Code",
+    "postalcode":    "Postal Code",
 }
 
 # Required columns (after alias normalisation)
@@ -94,6 +95,14 @@ OPTIONAL_COLUMNS = [
     "Sub-Category", "Product Name", "Product ID",
     "Ship Date", "Ship Mode", "State", "City",
 ]
+
+# Feature columns used in ML forecasting
+FEATURE_COLS = [
+    "lag_1", "lag_2", "lag_3", "lag_6", "lag_12",
+    "rolling_mean_3", "rolling_mean_6", "rolling_mean_12",
+    "month_number", "year", "time_index",
+]
+TARGET_COL = "total_sales"
 
 
 # =============================================================================
@@ -124,9 +133,9 @@ def load_data(filepath: str = DATA_PATH) -> pd.DataFrame:
             f"Please download the Sample Superstore dataset and place it at:\n"
             f"  {os.path.abspath(filepath)}\n\n"
             f"Dataset source:\n"
-            f"  Tableau Sample – Superstore Sales (superstore.csv)\n"
-            f"  Available on Kaggle: https://www.kaggle.com/datasets/vivek468/superstore-dataset-final\n"
-            f"  Or Tableau's public data resources.\n"
+            f"  Tableau Sample – Superstore Sales (Superstore.csv)\n"
+            f"  Available on Kaggle:\n"
+            f"  https://www.kaggle.com/datasets/vivek468/superstore-dataset-final\n"
             f"{'='*60}\n"
         )
 
@@ -159,7 +168,6 @@ def load_data(filepath: str = DATA_PATH) -> pd.DataFrame:
 
     # Log summary
     logger.info(f"Shape: {df.shape}")
-    logger.info(f"Columns: {list(df.columns)}")
     missing = df.isnull().sum()
     missing = missing[missing > 0]
     if not missing.empty:
@@ -202,11 +210,24 @@ def validate_columns(df: pd.DataFrame) -> None:
     logger.info("All required columns present.")
 
 
+def compute_dataset_hash(filepath: str) -> str:
+    """
+    Compute a lightweight MD5 hash of a file's first 256 KB.
+    Used to detect whether the dataset has changed since the model was trained.
+    Reading only the beginning is fast enough for staleness detection.
+    """
+    h = hashlib.md5()
+    with open(filepath, "rb") as f:
+        chunk = f.read(256 * 1024)   # 256 KB sample
+        h.update(chunk)
+    return h.hexdigest()
+
+
 # =============================================================================
 # 2. DATA CLEANING
 # =============================================================================
 
-def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+def clean_data(df: pd.DataFrame) -> tuple:
     """
     Clean the raw dataset and return (cleaned_df, cleaning_log).
 
@@ -218,22 +239,20 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     - Handle remaining nulls in numeric columns (fill with median).
     - Clip Discount to [0, 1] range.
     - Strip whitespace from categorical columns.
-    - Calculate Shipping Days if both dates are present.
 
     Returns
     -------
-    cleaned_df : pd.DataFrame
+    cleaned_df   : pd.DataFrame
     cleaning_log : dict — audit trail for transparency.
     """
     log = {}
-    log["raw_row_count"] = len(df)
+    log["raw_row_count"]    = len(df)
     log["raw_column_count"] = len(df.columns)
 
     # 1. Remove exact duplicates
     before = len(df)
     df = df.drop_duplicates()
     log["duplicate_rows_removed"] = before - len(df)
-    logger.info(f"Duplicates removed: {log['duplicate_rows_removed']}")
 
     # 2. Drop rows with null Order Date
     before = len(df)
@@ -244,7 +263,6 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     before = len(df)
     df = df[df["Sales"].notna() & (df["Sales"] > 0)]
     log["invalid_sales_removed"] = before - len(df)
-    logger.info(f"Invalid sales rows removed: {log['invalid_sales_removed']}")
 
     # 4. Handle remaining numeric nulls
     for col in ("Profit", "Quantity", "Discount"):
@@ -252,7 +270,7 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             null_count = df[col].isnull().sum()
             if null_count > 0:
                 median_val = df[col].median()
-                df[col].fillna(median_val, inplace=True)
+                df[col] = df[col].fillna(median_val)
                 logger.info(f"Filled {null_count} nulls in '{col}' with median={median_val:.4f}")
 
     # 5. Clip Discount to valid range [0, 1]
@@ -264,9 +282,9 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         df[col] = df[col].str.strip()
 
     # 7. Final counts and date range
-    log["final_row_count"] = len(df)
-    log["date_range_start"] = str(df["Order Date"].min().date())
-    log["date_range_end"] = str(df["Order Date"].max().date())
+    log["final_row_count"]   = len(df)
+    log["date_range_start"]  = str(df["Order Date"].min().date())
+    log["date_range_end"]    = str(df["Order Date"].max().date())
     log["total_months"] = (
         (df["Order Date"].max().year - df["Order Date"].min().year) * 12
         + df["Order Date"].max().month - df["Order Date"].min().month + 1
@@ -318,11 +336,11 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Discount bands
     def _discount_band(d):
-        if d == 0:            return "No Discount"
-        elif d <= 0.10:       return "Low (0–10%)"
-        elif d <= 0.20:       return "Moderate (11–20%)"
-        elif d <= 0.30:       return "High (21–30%)"
-        else:                 return "Very High (>30%)"
+        if d == 0:          return "No Discount"
+        elif d <= 0.10:     return "Low (0–10%)"
+        elif d <= 0.20:     return "Moderate (11–20%)"
+        elif d <= 0.30:     return "High (21–30%)"
+        else:               return "Very High (>30%)"
 
     if "Discount" in df.columns:
         df["Discount Band"] = df["Discount"].apply(_discount_band)
@@ -353,16 +371,16 @@ def calculate_kpis(df: pd.DataFrame) -> dict:
 
     Definitions
     -----------
-    Total Revenue      = sum(Sales)
-    Total Profit       = sum(Profit)
-    Total Orders       = count of unique Order IDs (or row count if absent)
-    Total Customers    = count of unique Customer IDs (or N/A)
-    Average Order Value= Total Revenue / Total Orders
-    Profit Margin %    = Total Profit / Total Revenue × 100
-    Total Qty Sold     = sum(Quantity)
-    Average Discount % = mean(Discount) × 100
+    Total Revenue        = sum(Sales)
+    Total Profit         = sum(Profit)
+    Total Orders         = count of unique Order IDs (or row count if absent)
+    Total Customers      = count of unique Customer IDs (or N/A)
+    Average Order Value  = Total Revenue / Total Orders
+    Profit Margin %      = Total Profit / Total Revenue × 100
+    Total Qty Sold       = sum(Quantity)
+    Average Discount %   = mean(Discount) × 100
     Revenue per Customer = Total Revenue / Total Customers
-    YoY Growth %       = growth from penultimate to latest calendar year
+    YoY Growth %         = growth from penultimate to latest calendar year
     """
     kpis = {}
 
@@ -407,8 +425,8 @@ def calculate_kpis(df: pd.DataFrame) -> dict:
             )
             kpis["YoY Comparison"] = f"{yearly.index[-2]} vs {yearly.index[-1]}"
         else:
-            kpis["YoY Growth %"] = None
-            kpis["YoY Comparison"] = "Insufficient years"
+            kpis["YoY Growth %"]    = None
+            kpis["YoY Comparison"]  = "Insufficient years"
 
     logger.info("KPIs calculated.")
     return kpis
@@ -436,26 +454,17 @@ def create_monthly_series(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["_period"] = df["Order Date"].dt.to_period("M")
 
-    agg_dict = {
-        "Sales":    "sum",
-        "Profit":   "sum",
-        "Quantity": "sum",
+    agg_kwargs = {
+        "total_sales":    ("Sales",    "sum"),
+        "total_profit":   ("Profit",   "sum"),
+        "total_quantity": ("Quantity", "sum"),
     }
     if "Order ID" in df.columns:
-        agg_dict["Order ID"] = pd.NamedAgg(column="Order ID", aggfunc="nunique")
+        agg_kwargs["total_orders"] = ("Order ID", "nunique")
     if "Customer ID" in df.columns:
-        agg_dict["Customer ID"] = pd.NamedAgg(column="Customer ID", aggfunc="nunique")
+        agg_kwargs["unique_customers"] = ("Customer ID", "nunique")
 
-    monthly = df.groupby("_period").agg(**{
-        "total_sales":   pd.NamedAgg(column="Sales", aggfunc="sum"),
-        "total_profit":  pd.NamedAgg(column="Profit", aggfunc="sum"),
-        "total_quantity":pd.NamedAgg(column="Quantity", aggfunc="sum"),
-        **({"total_orders": pd.NamedAgg(column="Order ID", aggfunc="nunique")}
-           if "Order ID" in df.columns else {}),
-        **({"unique_customers": pd.NamedAgg(column="Customer ID", aggfunc="nunique")}
-           if "Customer ID" in df.columns else {}),
-    }).reset_index()
-
+    monthly = df.groupby("_period").agg(**{k: pd.NamedAgg(*v) for k, v in agg_kwargs.items()}).reset_index()
     monthly.rename(columns={"_period": "month"}, inplace=True)
     monthly["month_dt"] = monthly["month"].dt.to_timestamp()
     monthly.sort_values("month_dt", inplace=True)
@@ -486,33 +495,31 @@ def create_forecast_features(monthly: pd.DataFrame) -> pd.DataFrame:
     Features
     --------
     lag_1  … lag_12 : sales lagged 1–12 months
-    rolling_mean_3  : 3-month rolling mean of sales (shift by 1 to avoid leakage)
-    rolling_mean_6  : 6-month rolling mean
-    rolling_mean_12 : 12-month rolling mean
+    rolling_mean_3  : 3-month rolling mean (shifted by 1 to avoid leakage)
+    rolling_mean_6  : 6-month rolling mean (shifted)
+    rolling_mean_12 : 12-month rolling mean (shifted)
     month_number    : calendar month (1–12) — seasonality proxy
     year            : calendar year — trend proxy
     time_index      : integer index from 0 — linear trend
 
-    All rolling / lag features are computed from past observations only
+    All rolling/lag features are computed from past observations only
     (using .shift(1) before .rolling()) to ensure no data leakage.
-
-    Returns a DataFrame with NaN rows (from lag initialisation) dropped.
+    Rows with NaN (from lag initialisation) are dropped.
     """
     df = monthly.copy().sort_values("month_dt").reset_index(drop=True)
-    df["time_index"]    = np.arange(len(df))
-    df["month_number"]  = df["month_dt"].dt.month
-    df["year"]          = df["month_dt"].dt.year
+    df["time_index"]   = np.arange(len(df))
+    df["month_number"] = df["month_dt"].dt.month
+    df["year"]         = df["month_dt"].dt.year
 
     for lag in [1, 2, 3, 6, 12]:
         df[f"lag_{lag}"] = df["total_sales"].shift(lag)
 
-    # Rolling means use .shift(1) so the window never includes the current month
+    # Rolling means use .shift(1) — the window never includes the current month
     shifted = df["total_sales"].shift(1)
     df["rolling_mean_3"]  = shifted.rolling(3).mean()
     df["rolling_mean_6"]  = shifted.rolling(6).mean()
     df["rolling_mean_12"] = shifted.rolling(12).mean()
 
-    # Drop rows where ANY feature is NaN (lag initialisation period)
     feature_cols = (
         [f"lag_{l}" for l in [1, 2, 3, 6, 12]]
         + ["rolling_mean_3", "rolling_mean_6", "rolling_mean_12"]
@@ -545,7 +552,7 @@ def chronological_split(df: pd.DataFrame, test_ratio: float = 0.20):
     -------
     (train_df, test_df)  both sorted by month_dt.
     """
-    n = len(df)
+    n         = len(df)
     split_idx = int(n * (1 - test_ratio))
     train = df.iloc[:split_idx].copy()
     test  = df.iloc[split_idx:].copy()
@@ -562,20 +569,13 @@ def chronological_split(df: pd.DataFrame, test_ratio: float = 0.20):
 # 8. MODEL TRAINING & EVALUATION
 # =============================================================================
 
-FEATURE_COLS = [
-    "lag_1", "lag_2", "lag_3", "lag_6", "lag_12",
-    "rolling_mean_3", "rolling_mean_6", "rolling_mean_12",
-    "month_number", "year", "time_index",
-]
-TARGET_COL = "total_sales"
-
-
 def train_forecast_models(
     train_df: pd.DataFrame,
     feature_cols: list = None,
 ) -> dict:
     """
-    Train Linear Regression, Ridge Regression, and Random Forest Regressor.
+    Train Linear Regression, Ridge Regression, and Random Forest Regressor
+    on the chronological training set.
 
     Returns
     -------
@@ -597,7 +597,6 @@ def train_forecast_models(
             ("model",  Ridge(alpha=1.0)),
         ]),
         "Random Forest": Pipeline([
-            # Random Forest is scale-invariant; scaler included for uniformity
             ("scaler", StandardScaler()),
             ("model",  RandomForestRegressor(
                 n_estimators=200,
@@ -623,18 +622,18 @@ def evaluate_models(
     feature_cols: list = None,
 ) -> pd.DataFrame:
     """
-    Evaluate all trained models on the held-out test set.
+    Evaluate all trained models on the held-out CHRONOLOGICAL TEST SET.
 
     Metrics
     -------
     MAE    : Mean Absolute Error — average dollar error per month.
     RMSE   : Root Mean Squared Error — penalises large errors more.
     R²     : Coefficient of determination — proportion of variance explained.
-    MAPE   : Mean Absolute Percentage Error — percentage error (skips zero actuals).
+    MAPE   : Mean Absolute Percentage Error (zero actuals excluded).
 
     Returns
     -------
-    pd.DataFrame  with one row per model and columns [MAE, RMSE, R2, MAPE].
+    pd.DataFrame with one row per model and columns [MAE, RMSE, R2, MAPE].
     """
     if feature_cols is None:
         feature_cols = [c for c in FEATURE_COLS if c in test_df.columns]
@@ -664,18 +663,16 @@ def select_best_model(
     eval_df: pd.DataFrame,
     models: dict,
     primary_metric: str = "MAE",
-) -> tuple[str, object]:
+) -> tuple:
     """
     Select the model with the lowest MAE (primary forecasting error metric).
 
     WHY MAE OVER R²?
     ----------------
-    For a business sales forecast, the practical question is:
+    For a business sales forecast the practical question is:
     "By how many dollars is my forecast off on average?"
-    MAE directly answers this. R² measures explained variance, which can
-    be misleading when variance is dominated by trend rather than model skill.
-    RMSE is also reported but penalises outlier months more heavily than
-    may be appropriate for operational planning.
+    MAE directly answers this. R² measures explained variance, which can be
+    misleading when variance is dominated by trend rather than model skill.
     """
     best_name = eval_df[primary_metric].idxmin()
     logger.info(
@@ -685,6 +682,64 @@ def select_best_model(
     return best_name, models[best_name]
 
 
+def refit_selected_model(
+    model_name: str,
+    all_feature_df: pd.DataFrame,
+    feature_cols: list,
+) -> object:
+    """
+    Refit the selected model architecture on ALL available historical data.
+
+    WHY REFIT?
+    ----------
+    After evaluation (train/test split), we have identified the best model
+    architecture. Before forecasting future periods, we retrain that same
+    architecture on the full historical dataset so the model learns from
+    every available observation — not just the training split.
+
+    This model is used ONLY for future forecasting. Evaluation metrics
+    remain those calculated on the held-out test set (not this refit model).
+
+    Returns
+    -------
+    A freshly fitted sklearn Pipeline of the same architecture as model_name.
+    """
+    X_all = all_feature_df[feature_cols]
+    y_all = all_feature_df[TARGET_COL]
+
+    model_map = {
+        "Linear Regression": Pipeline([
+            ("scaler", StandardScaler()),
+            ("model",  LinearRegression()),
+        ]),
+        "Ridge Regression": Pipeline([
+            ("scaler", StandardScaler()),
+            ("model",  Ridge(alpha=1.0)),
+        ]),
+        "Random Forest": Pipeline([
+            ("scaler", StandardScaler()),
+            ("model",  RandomForestRegressor(
+                n_estimators=200,
+                max_depth=8,
+                min_samples_leaf=2,
+                random_state=42,
+            )),
+        ]),
+    }
+
+    if model_name not in model_map:
+        raise ValueError(f"Unknown model name: '{model_name}'")
+
+    pipe = model_map[model_name]
+    pipe.fit(X_all, y_all)
+    logger.info(f"Refit '{model_name}' on all {len(all_feature_df)} historical observations.")
+    return pipe
+
+
+# =============================================================================
+# 9. MODEL PERSISTENCE
+# =============================================================================
+
 def save_model(
     model,
     model_name: str,
@@ -692,16 +747,23 @@ def save_model(
     feature_cols: list,
     monthly: pd.DataFrame,
     filepath: str = MODEL_PATH,
+    data_hash: str = "",
 ) -> None:
-    """Save the selected model and associated metadata using joblib."""
+    """
+    Save the selected model and associated metadata using joblib.
+
+    The payload includes a dataset hash so the dashboard can detect
+    whether the underlying dataset has changed since training.
+    """
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     payload = {
         "model":         model,
         "model_name":    model_name,
         "eval_df":       eval_df,
         "feature_cols":  feature_cols,
-        "monthly_shape": monthly.shape,
+        "monthly_rows":  len(monthly),
         "trained_at":    datetime.now().isoformat(),
+        "data_hash":     data_hash,
     }
     joblib.dump(payload, filepath)
     logger.info(f"Model saved: {filepath}")
@@ -713,76 +775,113 @@ def load_model(filepath: str = MODEL_PATH) -> dict:
         logger.warning(f"Model file not found: {filepath}")
         return None
     payload = joblib.load(filepath)
-    logger.info(f"Model loaded: {payload.get('model_name')} (trained {payload.get('trained_at')})")
+    logger.info(
+        f"Model loaded: {payload.get('model_name')} "
+        f"(trained {payload.get('trained_at')})"
+    )
     return payload
 
 
+def check_model_staleness(
+    model_payload: dict,
+    data_filepath: str = DATA_PATH,
+) -> bool:
+    """
+    Return True if the saved model was trained on a different version
+    of the dataset than the one currently present.
+
+    Compares the stored dataset hash against the current file's hash.
+    If no hash was saved (older model format), returns True (assume stale).
+    """
+    saved_hash = model_payload.get("data_hash", "")
+    if not saved_hash:
+        logger.warning("Saved model has no dataset hash — treating as potentially stale.")
+        return True
+    if not os.path.exists(data_filepath):
+        return False   # cannot compare — dataset missing handled elsewhere
+    current_hash = compute_dataset_hash(data_filepath)
+    is_stale = (saved_hash != current_hash)
+    if is_stale:
+        logger.warning(
+            "Dataset hash mismatch: the saved model was trained on a different "
+            "version of the dataset. Retraining is recommended."
+        )
+    return is_stale
+
+
 # =============================================================================
-# 9. FORECAST GENERATION
+# 10. BACKTEST & FUTURE FORECAST GENERATION
 # =============================================================================
 
-def generate_forecast(
-    model,
-    feature_df: pd.DataFrame,
+def generate_backtest(
+    eval_model,
+    test_df: pd.DataFrame,
+    feature_cols: list = None,
+) -> pd.DataFrame:
+    """
+    Generate backtest predictions for the held-out TEST PERIOD ONLY.
+
+    This function predicts only the chronological test set — observations
+    the model has never seen during training. It does NOT produce predictions
+    over the training period.
+
+    Returns
+    -------
+    pd.DataFrame with columns:
+        month_dt, actual, predicted, type='Backtest'
+    """
+    if feature_cols is None:
+        feature_cols = [c for c in FEATURE_COLS if c in test_df.columns]
+
+    X_test     = test_df[feature_cols]
+    y_pred     = eval_model.predict(X_test)
+
+    return pd.DataFrame({
+        "month_dt":  test_df["month_dt"].values,
+        "actual":    test_df[TARGET_COL].values,
+        "predicted": y_pred,
+        "type":      "Backtest",
+    })
+
+
+def generate_future_forecast(
+    final_model,
     monthly: pd.DataFrame,
     horizon: int = 6,
     feature_cols: list = None,
 ) -> pd.DataFrame:
     """
-    Generate future-period sales forecasts by iteratively predicting one
-    month ahead and feeding predictions back as lag features.
+    Generate future-period sales forecasts using the model refit on ALL
+    historical data.  Iterates one step ahead, feeding each prediction back
+    as a lag feature for the next period.
 
     Parameters
     ----------
-    model        : trained pipeline
-    feature_df   : DataFrame with engineered features (for back-test predictions)
-    monthly      : full monthly series (used to anchor future predictions)
-    horizon      : number of future months to forecast (default 6)
-    feature_cols : feature column names to use
+    final_model  : model refit on full historical data (from refit_selected_model)
+    monthly      : full monthly series — used to build the initial lag window
+    horizon      : number of future months to forecast
+    feature_cols : feature column names
 
     Returns
     -------
     pd.DataFrame with columns:
-        month_dt, actual (NaN for future), predicted, type
-        type ∈ {'Actual', 'Backtest', 'Forecast'}
+        month_dt, actual=NaN, predicted, type='Forecast'
 
-    NOTE: Future forecast values are estimates subject to uncertainty.
-          They are produced by the trained model and should not be treated
-          as guaranteed business outcomes.
+    NOTE: These values are estimates subject to uncertainty.
+          They are intended as planning aids, not guaranteed outcomes.
     """
     if feature_cols is None:
-        feature_cols = [c for c in FEATURE_COLS if c in feature_df.columns]
+        feature_cols = [c for c in FEATURE_COLS if c in monthly.columns]
 
-    # Back-test predictions on all feature rows
-    X_all = feature_df[feature_cols]
-    backtest_pred = model.predict(X_all)
-
-    backtest_df = pd.DataFrame({
-        "month_dt":  feature_df["month_dt"].values,
-        "actual":    feature_df[TARGET_COL].values,
-        "predicted": backtest_pred,
-        "type":      "Backtest",
-    })
-
-    # Actual rows with no prediction (lag initialisation rows)
-    first_feature_dt = feature_df["month_dt"].min()
-    early_actual = monthly[monthly["month_dt"] < first_feature_dt][
-        ["month_dt", "total_sales"]
-    ].copy()
-    early_actual.rename(columns={"total_sales": "actual"}, inplace=True)
-    early_actual["predicted"] = np.nan
-    early_actual["type"]      = "Actual"
-
-    # Future forecasting via iterative one-step-ahead prediction
-    # Build a rolling history from the full monthly series
-    history = monthly["total_sales"].tolist()
+    history   = monthly["total_sales"].tolist()
     last_date = monthly["month_dt"].max()
+    n_hist_0  = len(monthly)
     future_rows = []
 
     for i in range(1, horizon + 1):
-        next_date     = last_date + pd.DateOffset(months=i)
-        n_hist        = len(history)
-        time_idx      = len(monthly) + i - 1   # continue the integer index
+        next_date = last_date + pd.DateOffset(months=i)
+        n_hist    = len(history)
+        time_idx  = n_hist_0 + i - 1
 
         def _lag(k):
             idx = n_hist - k
@@ -790,7 +889,7 @@ def generate_forecast(
 
         def _roll_mean(k):
             vals = history[max(0, n_hist - k):]
-            return np.mean(vals) if vals else np.nan
+            return float(np.mean(vals)) if vals else np.nan
 
         row = {
             "lag_1":          _lag(1),
@@ -806,7 +905,7 @@ def generate_forecast(
             "time_index":     time_idx,
         }
         row_df   = pd.DataFrame([{c: row.get(c, np.nan) for c in feature_cols}])
-        pred_val = max(0, float(model.predict(row_df)[0]))   # sales cannot be < 0
+        pred_val = max(0.0, float(final_model.predict(row_df)[0]))
 
         future_rows.append({
             "month_dt":  next_date,
@@ -816,20 +915,56 @@ def generate_forecast(
         })
         history.append(pred_val)
 
-    forecast_df = pd.concat(
-        [early_actual, backtest_df, pd.DataFrame(future_rows)],
-        ignore_index=True,
-    ).sort_values("month_dt").reset_index(drop=True)
+    logger.info(f"Future forecast generated: {horizon}-month horizon.")
+    return pd.DataFrame(future_rows)
 
-    logger.info(f"Forecast generated: {horizon}-month horizon.")
-    return forecast_df
+
+def build_full_chart_df(
+    monthly: pd.DataFrame,
+    test_df: pd.DataFrame,
+    eval_model,
+    final_model,
+    horizon: int,
+    feature_cols: list,
+) -> pd.DataFrame:
+    """
+    Assemble the complete chart DataFrame combining:
+
+      ACTUAL SALES      — all historical monthly sales (type='Actual Sales')
+      BACKTEST          — model predictions on test period only (type='Backtest Prediction')
+      FUTURE FORECAST   — iterative future predictions (type='Future Forecast')
+
+    The backtest points sit on top of the actual series for the test window,
+    making over/under-prediction easy to compare visually.
+    """
+    # 1. All historical actuals
+    actual_df = monthly[["month_dt", "total_sales"]].copy()
+    actual_df.rename(columns={"total_sales": "actual"}, inplace=True)
+    actual_df["predicted"] = np.nan
+    actual_df["type"]      = "Actual Sales"
+
+    # 2. Backtest: test period only
+    bt_df = generate_backtest(eval_model, test_df, feature_cols)
+    bt_df["actual"] = test_df[TARGET_COL].values   # already set but be explicit
+
+    # 3. Future forecast
+    fc_df = generate_future_forecast(final_model, monthly, horizon, feature_cols)
+
+    combined = pd.concat([actual_df, bt_df, fc_df], ignore_index=True)
+    combined.sort_values("month_dt", inplace=True)
+    combined.reset_index(drop=True, inplace=True)
+    return combined
 
 
 # =============================================================================
-# 10. BUSINESS INSIGHT GENERATION
+# 11. BUSINESS INSIGHT GENERATION
 # =============================================================================
 
-def generate_business_insights(df: pd.DataFrame, kpis: dict, monthly: pd.DataFrame) -> dict:
+def generate_business_insights(
+    df: pd.DataFrame,
+    kpis: dict,
+    monthly: pd.DataFrame,
+) -> dict:
     """
     Dynamically generate evidence-based business insights.
 
@@ -846,8 +981,8 @@ def generate_business_insights(df: pd.DataFrame, kpis: dict, monthly: pd.DataFra
     recommendations = []
 
     # --- Revenue & Profit summary ---
-    rev   = kpis["Total Revenue"]
-    prof  = kpis["Total Profit"]
+    rev    = kpis["Total Revenue"]
+    prof   = kpis["Total Profit"]
     margin = kpis["Profit Margin %"]
 
     findings.append(
@@ -874,12 +1009,14 @@ def generate_business_insights(df: pd.DataFrame, kpis: dict, monthly: pd.DataFra
         )
         if cat_profit.iloc[-1] < 0:
             risks.append(
-                f"'{worst_cat}' has NEGATIVE total profit (${cat_profit.iloc[-1]:,.0f}). "
-                f"Products in this category may be discounted beyond their margin threshold."
+                f"'{worst_cat}' has negative total profit (${cat_profit.iloc[-1]:,.0f}). "
+                f"This is associated with heavy discounting or cost issues in this category "
+                f"— further investigation is recommended."
             )
         opportunities.append(
-            f"'{best_cat}' demonstrates strong profitability. Scaling inventory allocation "
-            f"toward high-margin products in this category warrants investigation."
+            f"'{best_cat}' demonstrates strong profitability (${cat_profit.iloc[0]:,.0f}). "
+            f"Evaluating inventory allocation toward high-margin products in this category "
+            f"may be worth investigating."
         )
 
     # --- Discount vs profit association ---
@@ -887,26 +1024,33 @@ def generate_business_insights(df: pd.DataFrame, kpis: dict, monthly: pd.DataFra
         high_disc = df[df["Discount"] >= 0.30]
         low_disc  = df[df["Discount"] < 0.10]
         if len(high_disc) > 0 and len(low_disc) > 0:
-            hd_margin = (high_disc["Profit"].sum() / high_disc["Sales"].sum() * 100) if high_disc["Sales"].sum() != 0 else 0
-            ld_margin = (low_disc["Profit"].sum()  / low_disc["Sales"].sum()  * 100) if low_disc["Sales"].sum()  != 0 else 0
+            hd_margin = (
+                high_disc["Profit"].sum() / high_disc["Sales"].sum() * 100
+                if high_disc["Sales"].sum() != 0 else 0
+            )
+            ld_margin = (
+                low_disc["Profit"].sum() / low_disc["Sales"].sum() * 100
+                if low_disc["Sales"].sum() != 0 else 0
+            )
             findings.append(
-                f"Products with discounts ≥30% show an average profit margin of "
+                f"Products with discounts ≥30% are associated with an average profit margin of "
                 f"{hd_margin:.1f}% in this dataset, compared with {ld_margin:.1f}% "
-                f"for products with discounts below 10%. This association warrants further investigation."
+                f"for products with discounts below 10%. This association warrants further "
+                f"investigation — it does not establish causation."
             )
             if hd_margin < ld_margin:
                 risks.append(
-                    f"High-discount products (≥30%) are associated with a lower observed profit margin "
+                    f"High-discount products (≥30%) are observed to have a lower average profit margin "
                     f"({hd_margin:.1f}% vs {ld_margin:.1f}% for low-discount products). "
-                    f"This does not establish causation but suggests evaluating the discount policy."
+                    f"This pattern suggests evaluating the discount policy."
                 )
 
     # --- Top sub-category ---
     if "Sub-Category" in df.columns:
-        sc_sales = df.groupby("Sub-Category")["Sales"].sum().sort_values(ascending=False)
+        sc_sales  = df.groupby("Sub-Category")["Sales"].sum().sort_values(ascending=False)
         sc_profit = df.groupby("Sub-Category")["Profit"].sum().sort_values(ascending=False)
-        top_sales_sc  = sc_sales.index[0]
-        top_profit_sc = sc_profit.index[0]
+        top_sales_sc    = sc_sales.index[0]
+        top_profit_sc   = sc_profit.index[0]
         worst_profit_sc = sc_profit.index[-1]
         findings.append(
             f"'{top_sales_sc}' is the top sub-category by revenue (${sc_sales.iloc[0]:,.0f}). "
@@ -914,28 +1058,29 @@ def generate_business_insights(df: pd.DataFrame, kpis: dict, monthly: pd.DataFra
         )
         if sc_profit.iloc[-1] < 0:
             risks.append(
-                f"'{worst_profit_sc}' sub-category has negative total profit "
-                f"(${sc_profit.iloc[-1]:,.0f}), suggesting possible over-discounting "
-                f"or cost structure issues."
+                f"'{worst_profit_sc}' sub-category shows negative total profit "
+                f"(${sc_profit.iloc[-1]:,.0f}). This is associated with possible "
+                f"over-discounting or unfavourable cost structure — investigate further."
             )
         opportunities.append(
             f"'{top_profit_sc}' sub-category shows the highest profit contribution. "
-            f"Prioritising stock availability and targeted marketing in this segment could be explored."
+            f"Prioritising stock availability and targeted marketing in this segment "
+            f"could be worth exploring."
         )
 
     # --- Regional insight ---
     if "Region" in df.columns:
         reg_profit = df.groupby("Region")["Profit"].sum().sort_values(ascending=False)
-        reg_sales  = df.groupby("Region")["Sales"].sum().sort_values(ascending=False)
         best_region  = reg_profit.index[0]
         worst_region = reg_profit.index[-1]
         opportunities.append(
-            f"'{best_region}' region leads in profit (${reg_profit.iloc[0]:,.0f}). "
-            f"Understanding what drives performance here may yield learnable practices for other regions."
+            f"'{best_region}' region shows the highest profit (${reg_profit.iloc[0]:,.0f}). "
+            f"Understanding what is associated with strong performance here may yield "
+            f"learnable practices for other regions."
         )
         if reg_profit.iloc[-1] < 0 or reg_profit.iloc[-1] < reg_profit.mean() * 0.5:
             risks.append(
-                f"'{worst_region}' region shows relatively weak profit performance "
+                f"'{worst_region}' region shows relatively weak profit "
                 f"(${reg_profit.iloc[-1]:,.0f}). Root-cause investigation is advisable."
             )
 
@@ -950,20 +1095,22 @@ def generate_business_insights(df: pd.DataFrame, kpis: dict, monthly: pd.DataFra
 
     # --- Recommendations ---
     recommendations = [
-        "Investigate the discount policy for product sub-categories with negative or below-average profit margins. "
-        "Test whether a moderate discount reduction maintains sales volume while improving contribution margin.",
+        "Evaluate the discount policy for product sub-categories with negative or "
+        "below-average profit margins. Test whether a moderate discount reduction "
+        "maintains sales volume while improving contribution margin, and measure the result.",
 
-        "Evaluate inventory and marketing investment allocation toward the highest-profit category and sub-category "
-        "identified in this analysis.",
+        "Investigate inventory and marketing investment allocation toward the highest-profit "
+        "category and sub-category identified in this analysis.",
 
-        "Investigate the root cause of weak regional performance. Consider piloting targeted promotions or "
+        "Investigate the root cause of weak regional performance. Consider piloting targeted "
         "operational improvements in under-performing regions and monitor the impact on profit.",
 
         "Monitor the sales forecast for periods with predicted lower-than-baseline sales. "
         "Prepare inventory and cash-flow planning accordingly.",
 
-        "Consider segmenting discount experiments by customer type (Segment) to understand "
-        "whether discount sensitivity differs across Consumer, Corporate, and Home Office customers.",
+        "Consider experimenting with segment-differentiated discount levels to understand "
+        "whether discount sensitivity differs across Consumer, Corporate, and Home Office "
+        "customers. Validate findings through a controlled test before scaling.",
     ]
 
     return {
@@ -975,61 +1122,60 @@ def generate_business_insights(df: pd.DataFrame, kpis: dict, monthly: pd.DataFra
 
 
 # =============================================================================
-# 11. RISK & OPPORTUNITY ANALYSIS
+# 12. RISK & OPPORTUNITY ANALYSIS
 # =============================================================================
 
 def identify_risks(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
     """
-    Identify evidence-based business risks.
+    Identify evidence-based business risks using explicitly defined rules.
 
-    Risk detection rules (defined explicitly below):
+    Risk detection rules
+    --------------------
     1. Category with negative total profit.
     2. Sub-category with negative total profit.
-    3. High-discount / low-profit-margin products.
-    4. Declining monthly revenue in the most recent N months.
-    5. Region with below-average profit.
+    3. High-discount products with negative profit margin.
+    4. Declining monthly revenue (latest month > 15% below 6-month average).
+    5. Region with profit below 50% of cross-region average.
     """
     risks = []
 
     # Risk 1: Negative-profit categories
     if "Category" in df.columns:
         cat_profit = df.groupby("Category")["Profit"].sum()
-        neg_cats = cat_profit[cat_profit < 0]
-        for cat, p in neg_cats.items():
+        for cat, p in cat_profit[cat_profit < 0].items():
             risks.append({
-                "type":        "Negative Profit — Category",
-                "entity":      cat,
-                "detail":      f"Total profit: ${p:,.0f}",
-                "risk_level":  "High",
+                "type":       "Negative Profit — Category",
+                "entity":     cat,
+                "detail":     f"Total profit: ${p:,.0f}",
+                "risk_level": "High",
             })
 
     # Risk 2: Negative-profit sub-categories
     if "Sub-Category" in df.columns:
         sc_profit = df.groupby("Sub-Category")["Profit"].sum()
-        neg_scs = sc_profit[sc_profit < 0]
-        for sc, p in neg_scs.items():
+        for sc, p in sc_profit[sc_profit < 0].items():
             risks.append({
-                "type":        "Negative Profit — Sub-Category",
-                "entity":      sc,
-                "detail":      f"Total profit: ${p:,.0f}",
-                "risk_level":  "High",
+                "type":       "Negative Profit — Sub-Category",
+                "entity":     sc,
+                "detail":     f"Total profit: ${p:,.0f}",
+                "risk_level": "High",
             })
 
     # Risk 3: High-discount products with negative margin
     if "Discount" in df.columns and "Product Name" in df.columns:
         prod_df = df.groupby("Product Name").agg(
-            total_sales=("Sales", "sum"),
-            total_profit=("Profit", "sum"),
-            avg_discount=("Discount", "mean"),
+            total_sales=("Sales",    "sum"),
+            total_profit=("Profit",  "sum"),
+            avg_discount=("Discount","mean"),
         ).reset_index()
         prod_df["margin"] = np.where(
             prod_df["total_sales"] != 0,
             prod_df["total_profit"] / prod_df["total_sales"] * 100, 0
         )
-        risky_prods = prod_df[
+        risky = prod_df[
             (prod_df["avg_discount"] > 0.25) & (prod_df["margin"] < 0)
         ].sort_values("total_profit").head(5)
-        for _, row in risky_prods.iterrows():
+        for _, row in risky.iterrows():
             risks.append({
                 "type":       "High Discount + Negative Margin — Product",
                 "entity":     row["Product Name"][:50],
@@ -1037,7 +1183,7 @@ def identify_risks(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
                 "risk_level": "Medium",
             })
 
-    # Risk 4: Declining recent revenue trend
+    # Risk 4: Declining recent revenue
     if len(monthly) >= 6:
         recent = monthly.tail(6)["total_sales"]
         if recent.iloc[-1] < recent.mean() * 0.85:
@@ -1054,13 +1200,12 @@ def identify_risks(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
     # Risk 5: Below-average-profit regions
     if "Region" in df.columns:
         reg_profit = df.groupby("Region")["Profit"].sum()
-        avg_reg_profit = reg_profit.mean()
-        weak_regions = reg_profit[reg_profit < avg_reg_profit * 0.5]
-        for reg, p in weak_regions.items():
+        avg = reg_profit.mean()
+        for reg, p in reg_profit[reg_profit < avg * 0.5].items():
             risks.append({
                 "type":       "Below-Average Profit — Region",
                 "entity":     reg,
-                "detail":     f"Profit ${p:,.0f} vs region average ${avg_reg_profit:,.0f}",
+                "detail":     f"Profit ${p:,.0f} vs region average ${avg:,.0f}",
                 "risk_level": "Low",
             })
 
@@ -1070,26 +1215,28 @@ def identify_risks(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
 
 def identify_opportunities(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
     """
-    Identify evidence-based business opportunities.
+    Identify evidence-based business opportunities using defined detection rules.
 
-    Detection rules:
-    1. Categories with both high sales and high profit.
-    2. Fastest-growing sub-categories (year-over-year).
+    Rules
+    -----
+    1. Categories with positive profit in top 2.
+    2. Sub-categories with highest profit margin (positive only), top 3.
     3. Regions with above-average profit.
-    4. Customer segments with high and growing revenue.
-    5. Products with high margin and meaningful sales volume.
+    4. Improving recent revenue trend (recent 3M average > prior 3M by > 5%).
     """
     opps = []
 
-    # Opportunity 1: High-sales + high-profit categories
+    # Opportunity 1: High-profit categories
     if "Category" in df.columns:
         cat_agg = df.groupby("Category").agg(
-            total_sales=("Sales", "sum"),
-            total_profit=("Profit", "sum"),
+            total_sales=("Sales",  "sum"),
+            total_profit=("Profit","sum"),
         ).reset_index()
-        cat_agg["margin"] = cat_agg["total_profit"] / cat_agg["total_sales"] * 100
-        top_cats = cat_agg.sort_values("total_profit", ascending=False).head(2)
-        for _, row in top_cats.iterrows():
+        cat_agg["margin"] = np.where(
+            cat_agg["total_sales"] != 0,
+            cat_agg["total_profit"] / cat_agg["total_sales"] * 100, 0
+        )
+        for _, row in cat_agg.sort_values("total_profit", ascending=False).head(2).iterrows():
             if row["total_profit"] > 0:
                 opps.append({
                     "type":   "High-Profit Category",
@@ -1101,25 +1248,21 @@ def identify_opportunities(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
                     ),
                 })
 
-    # Opportunity 2: Top-profit sub-categories
+    # Opportunity 2: High-margin sub-categories
     if "Sub-Category" in df.columns:
         sc_agg = df.groupby("Sub-Category").agg(
-            total_sales=("Sales", "sum"),
-            total_profit=("Profit", "sum"),
+            total_sales=("Sales",  "sum"),
+            total_profit=("Profit","sum"),
         ).reset_index()
         sc_agg["margin"] = np.where(
             sc_agg["total_sales"] != 0,
             sc_agg["total_profit"] / sc_agg["total_sales"] * 100, 0
         )
-        top_scs = sc_agg[sc_agg["total_profit"] > 0].sort_values("margin", ascending=False).head(3)
-        for _, row in top_scs.iterrows():
+        for _, row in sc_agg[sc_agg["total_profit"] > 0].sort_values("margin", ascending=False).head(3).iterrows():
             opps.append({
                 "type":   "High-Margin Sub-Category",
                 "entity": row["Sub-Category"],
-                "detail": (
-                    f"Margin: {row['margin']:.1f}%  |  "
-                    f"Profit: ${row['total_profit']:,.0f}"
-                ),
+                "detail": f"Margin: {row['margin']:.1f}%  |  Profit: ${row['total_profit']:,.0f}",
             })
 
     # Opportunity 3: Above-average-profit regions
@@ -1134,9 +1277,9 @@ def identify_opportunities(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
             })
 
     # Opportunity 4: Improving revenue trend
-    if len(monthly) >= 3:
+    if len(monthly) >= 6:
         recent_3 = monthly.tail(3)["total_sales"].mean()
-        prior_3  = monthly.iloc[-6:-3]["total_sales"].mean() if len(monthly) >= 6 else None
+        prior_3  = monthly.iloc[-6:-3]["total_sales"].mean()
         if prior_3 and prior_3 > 0:
             trend_pct = (recent_3 - prior_3) / prior_3 * 100
             if trend_pct > 5:
@@ -1154,39 +1297,31 @@ def identify_opportunities(df: pd.DataFrame, monthly: pd.DataFrame) -> list:
 
 
 # =============================================================================
-# 12. PROFIT SCENARIO ANALYSIS
+# 13. PROFIT SCENARIO ANALYSIS
 # =============================================================================
 
 def analyze_profitability(df: pd.DataFrame) -> dict:
     """
-    Discount vs Profit scenario analysis.
+    Historical discount vs profit scenario analysis.
 
     IMPORTANT DISCLAIMER:
-    These scenarios are exploratory and based on historical associations in
-    the dataset. They do NOT establish causal relationships. The assumption
-    that changing the discount rate will produce the estimated profit change
-    is HYPOTHETICAL and subject to many real-world factors not captured here.
+    These scenarios are based on historical associations in the dataset.
+    They do NOT establish causal relationships. The assumption that changing
+    the discount rate will produce the estimated profit change is HYPOTHETICAL
+    and subject to many real-world factors not captured here.
 
     Method: For each discount band, compute average profit margin.
-    Then estimate profit under hypothetical discount scenarios using
-    the historical relationship as a guide only.
-
-    Returns
-    -------
-    dict with:
-        discount_band_summary : DataFrame
-        scenario_estimates    : DataFrame
-        caveats               : str
+    A simple OLS model estimates profit margin at hypothetical discount levels.
+    All scenarios are labelled as illustrative / hypothetical.
     """
     if "Discount" not in df.columns:
         return {"error": "Discount column not available."}
 
-    # Historical analysis by discount band
     band_summary = df.groupby("Discount Band").agg(
-        total_sales=("Sales", "sum"),
-        total_profit=("Profit", "sum"),
-        order_count=("Sales", "count"),
-        avg_discount=("Discount", "mean"),
+        total_sales=("Sales",    "sum"),
+        total_profit=("Profit",  "sum"),
+        order_count=("Sales",    "count"),
+        avg_discount=("Discount","mean"),
     ).reset_index()
     band_summary["profit_margin"] = np.where(
         band_summary["total_sales"] != 0,
@@ -1194,34 +1329,35 @@ def analyze_profitability(df: pd.DataFrame) -> dict:
     )
     band_summary = band_summary.sort_values("avg_discount")
 
-    # Simple OLS relationship: discount → profit_margin at row level
+    # OLS: discount → profit margin at transaction level
     from sklearn.linear_model import LinearRegression as _LR
-    disc_vals = df["Discount"].values.reshape(-1, 1)
-    margin_vals = df["Profit Margin"].values if "Profit Margin" in df.columns else (
-        np.where(df["Sales"] != 0, df["Profit"] / df["Sales"] * 100, 0)
+    disc_vals    = df["Discount"].values.reshape(-1, 1)
+    margin_vals  = np.where(
+        df["Sales"] != 0,
+        df["Profit"] / df["Sales"] * 100, 0
     )
     _lr = _LR()
     _lr.fit(disc_vals, margin_vals)
-    baseline_disc  = df["Discount"].mean()
-    total_sales    = df["Sales"].sum()
 
-    # Hypothetical scenario estimates
+    baseline_disc = float(df["Discount"].mean())
+    total_sales   = float(df["Sales"].sum())
+
     scenario_discounts = {
-        "Current (as-is)":     baseline_disc,
-        "Reduce by 5 pp":      max(0, baseline_disc - 0.05),
-        "Reduce by 10 pp":     max(0, baseline_disc - 0.10),
-        "Increase by 5 pp":    min(0.80, baseline_disc + 0.05),
+        "Current (as-is)":   baseline_disc,
+        "Reduce by 5 pp":    max(0.0, baseline_disc - 0.05),
+        "Reduce by 10 pp":   max(0.0, baseline_disc - 0.10),
+        "Increase by 5 pp":  min(0.80, baseline_disc + 0.05),
     }
     scenarios = []
     for label, disc in scenario_discounts.items():
         est_margin = float(_lr.predict([[disc]])[0])
         est_profit = total_sales * (est_margin / 100)
         scenarios.append({
-            "Scenario":           label,
+            "Scenario":             label,
             "Assumed Avg Discount": f"{disc*100:.1f}%",
-            "Est. Profit Margin": f"{est_margin:.1f}%",
-            "Est. Profit ($)":    f"${est_profit:,.0f}",
-            "Note":               "Hypothetical — see caveats",
+            "Est. Profit Margin":   f"{est_margin:.1f}%",
+            "Est. Profit ($)":      f"${est_profit:,.0f}",
+            "Label":                "Illustrative scenario — see disclaimer",
         })
 
     caveats = (
@@ -1243,7 +1379,7 @@ def analyze_profitability(df: pd.DataFrame) -> dict:
 
 
 # =============================================================================
-# 13. MAIN PIPELINE (run from command line or notebook import)
+# 14. MAIN PIPELINE
 # =============================================================================
 
 def run_full_pipeline(
@@ -1255,12 +1391,24 @@ def run_full_pipeline(
     """
     Execute the full analytics and ML pipeline end-to-end.
 
-    Returns a results dict with all computed artefacts for use in the
-    dashboard and notebook.
+    ML workflow
+    -----------
+    1. Chronological train/test split
+    2. Train candidates on train set
+    3. Evaluate candidates on test set → select best (lowest MAE)
+    4. Refit selected model on ALL historical data
+    5. Use refit model for future forecast
+    6. Evaluation metrics remain those from step 3 (unseen test set only)
+
+    Returns a results dict with all computed artefacts.
     """
     print("\n" + "="*70)
     print("  AI-Powered E-Commerce Sales Forecasting & Profit Optimization")
+    print("  Author: Yashaswi")
     print("="*70)
+
+    # Compute dataset hash for staleness detection
+    data_hash = compute_dataset_hash(data_path) if os.path.exists(data_path) else ""
 
     # 1. Load
     print("\n[1/9] Loading data …")
@@ -1285,23 +1433,27 @@ def run_full_pipeline(
     # 6. Forecast features
     print("[6/9] Creating forecast features …")
     forecast_feat_df = create_forecast_features(monthly)
-
     feature_cols = [c for c in FEATURE_COLS if c in forecast_feat_df.columns]
 
-    # 7. Train / evaluate / select model
-    trained_models = None
-    eval_df_models = None
-    best_name      = None
-    best_model     = None
-
+    # 7. Train / evaluate / select / refit
     existing_payload = load_model(model_path) if not retrain else None
 
     if existing_payload and not retrain:
-        print("[7/9] Loading existing trained model …")
-        best_model = existing_payload["model"]
-        best_name  = existing_payload["model_name"]
-        eval_df_models = existing_payload.get("eval_df")
-        print(f"       → Loaded: {best_name}")
+        is_stale = check_model_staleness(existing_payload, data_path)
+        if is_stale:
+            print("[7/9] Saved model is stale (dataset changed). Retraining …")
+        else:
+            print("[7/9] Loading existing trained model …")
+    else:
+        is_stale = True
+
+    if existing_payload and not retrain and not is_stale:
+        best_name       = existing_payload["model_name"]
+        eval_df_models  = existing_payload.get("eval_df")
+        # Rebuild refit model on current data (model in payload was trained on subset)
+        print(f"       → Loaded: {best_name}. Refitting on full current data …")
+        final_model = refit_selected_model(best_name, forecast_feat_df, feature_cols)
+        train_df = test_df = None
     else:
         print("[7/9] Training forecasting models …")
         if len(forecast_feat_df) < 10:
@@ -1310,27 +1462,43 @@ def run_full_pipeline(
                 f"Only {len(forecast_feat_df)} usable rows after lag feature creation. "
                 "At least ~24 months of transaction data are recommended."
             )
-        train_df, test_df = chronological_split(forecast_feat_df)
-        trained_models    = train_forecast_models(train_df, feature_cols)
-        eval_df_models    = evaluate_models(trained_models, test_df, feature_cols)
-        best_name, best_model = select_best_model(eval_df_models, trained_models)
-        save_model(best_model, best_name, eval_df_models, feature_cols, monthly, model_path)
+        train_df, test_df    = chronological_split(forecast_feat_df)
+        trained_models       = train_forecast_models(train_df, feature_cols)
+        eval_df_models       = evaluate_models(trained_models, test_df, feature_cols)
+        best_name, eval_model = select_best_model(eval_df_models, trained_models)
 
-    # 8. Forecast
-    print("[8/9] Generating forecast …")
-    forecast_df = generate_forecast(
-        best_model, forecast_feat_df, monthly, horizon=forecast_horizon, feature_cols=feature_cols
-    )
+        # Refit selected architecture on ALL historical data for forecasting
+        print(f"       → Selected: {best_name}. Refitting on full historical data …")
+        final_model = refit_selected_model(best_name, forecast_feat_df, feature_cols)
+
+        save_model(
+            final_model, best_name, eval_df_models,
+            feature_cols, monthly, model_path, data_hash
+        )
+
+    # 8. Backtest + Forecast
+    print("[8/9] Generating backtest and forecast …")
+    if train_df is None:
+        # Re-derive test set from current data when loading existing model
+        train_df, test_df = chronological_split(forecast_feat_df)
+        eval_model_for_bt = refit_selected_model.__wrapped__ if hasattr(
+            refit_selected_model, '__wrapped__') else None
+        # Re-train candidate on train split to get a proper backtest model
+        tmp_models   = train_forecast_models(train_df, feature_cols)
+        eval_model   = tmp_models[best_name]
+
+    bt_df = generate_backtest(eval_model, test_df, feature_cols)
+    fc_df = generate_future_forecast(final_model, monthly, forecast_horizon, feature_cols)
 
     # 9. Insights
     print("[9/9] Generating business insights …")
-    insights   = generate_business_insights(feat_df, kpis, monthly)
-    risks_list = identify_risks(feat_df, monthly)
-    opps_list  = identify_opportunities(feat_df, monthly)
+    insights        = generate_business_insights(feat_df, kpis, monthly)
+    risks_list      = identify_risks(feat_df, monthly)
+    opps_list       = identify_opportunities(feat_df, monthly)
     profit_analysis = analyze_profitability(feat_df)
 
     print("\n" + "="*70)
-    print("  Pipeline complete.")
+    print(f"  Pipeline complete.")
     print(f"  Final dataset : {cleaning_log['final_row_count']:,} rows")
     print(f"  Date range    : {cleaning_log['date_range_start']} – {cleaning_log['date_range_end']}")
     print(f"  KPI Revenue   : ${kpis['Total Revenue']:,.0f}")
@@ -1342,22 +1510,25 @@ def run_full_pipeline(
     print("="*70 + "\n")
 
     return {
-        "raw_df":          raw_df,
-        "clean_df":        clean_df,
-        "feat_df":         feat_df,
-        "cleaning_log":    cleaning_log,
-        "kpis":            kpis,
-        "monthly":         monthly,
-        "forecast_feat_df":forecast_feat_df,
-        "feature_cols":    feature_cols,
-        "eval_df":         eval_df_models,
-        "best_model_name": best_name,
-        "best_model":      best_model,
-        "forecast_df":     forecast_df,
-        "insights":        insights,
-        "risks":           risks_list,
-        "opportunities":   opps_list,
-        "profit_analysis": profit_analysis,
+        "raw_df":           raw_df,
+        "clean_df":         clean_df,
+        "feat_df":          feat_df,
+        "cleaning_log":     cleaning_log,
+        "kpis":             kpis,
+        "monthly":          monthly,
+        "forecast_feat_df": forecast_feat_df,
+        "feature_cols":     feature_cols,
+        "train_df":         train_df,
+        "test_df":          test_df,
+        "eval_df":          eval_df_models,
+        "best_model_name":  best_name,
+        "final_model":      final_model,
+        "backtest_df":      bt_df,
+        "forecast_df":      fc_df,
+        "insights":         insights,
+        "risks":            risks_list,
+        "opportunities":    opps_list,
+        "profit_analysis":  profit_analysis,
     }
 
 

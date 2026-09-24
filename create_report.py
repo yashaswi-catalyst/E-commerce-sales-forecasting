@@ -4,7 +4,7 @@ AI-Powered E-Commerce Sales Forecasting & Profit Optimization
 IBM SkillsBuild Data Analytics with AI Academic Internship
 
 Run: python create_report.py
-Output: YourName_EcommerceSalesForecastingReport.docx
+Output: Yashaswi_EcommerceSalesForecastingReport.docx
 """
 
 import os
@@ -90,7 +90,7 @@ def create_report(output_path: str):
     meta_p = doc.add_paragraph()
     meta_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     meta_p.add_run(
-        f"Author: [Your Name]\n"
+        f"Author: Yashaswi\n"
         f"Date: {datetime.date.today().strftime('%B %Y')}\n"
         f"Dataset: Sample Superstore Retail Transactions\n"
         f"Technologies: Python · Pandas · Scikit-Learn · Streamlit · Plotly"
@@ -627,7 +627,7 @@ def create_report(output_path: str):
     # ─────────────────────────────────────────────────────────────────────────
     add_heading(doc, "20. Conclusion", level=1)
     add_para(doc, (
-        "This project demonstrates a complete, production-quality Business Intelligence "
+        "This project demonstrates a complete, end-to-end Business Intelligence "
         "and Machine Learning pipeline built on publicly available e-commerce transaction data. "
         "Starting from raw CSV records, it delivers dynamic KPIs, focused EDA, a validated "
         "sales forecast, evidence-based risk and opportunity identification, and actionable "
@@ -686,6 +686,6 @@ def create_report(output_path: str):
 if __name__ == "__main__":
     out = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "YourName_EcommerceSalesForecastingReport.docx",
+        "Yashaswi_EcommerceSalesForecastingReport.docx",
     )
     create_report(out)
