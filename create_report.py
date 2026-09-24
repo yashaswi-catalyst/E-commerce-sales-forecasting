@@ -227,7 +227,9 @@ def create_report(output_path: str):
     # ─────────────────────────────────────────────────────────────────────────
     add_heading(doc, "5. Data Cleaning", level=1)
     add_para(doc, (
-        "Data cleaning is implemented in the clean_data() function. "
+        "Data is loaded by load_data(), which reads the CSV with encoding fallback, "
+        "validates required columns, and parses Order Date and Ship Date as datetime. "
+        "Data cleaning is then implemented in the clean_data() function. "
         "All transformation steps are logged in a cleaning log for full transparency. "
         "No rows are removed arbitrarily — each removal has an explicit justification."
     ))
@@ -272,7 +274,11 @@ def create_report(output_path: str):
     # 7. BUSINESS KPIs
     # ─────────────────────────────────────────────────────────────────────────
     add_heading(doc, "7. Business KPI Definitions", level=1)
-    add_para(doc, "All KPIs are computed dynamically from the loaded dataset.")
+    add_para(doc, (
+        "All KPIs are computed dynamically at runtime by calculate_kpis(), "
+        "which takes the cleaned and feature-engineered dataset as input. "
+        "No KPI value is hard-coded."
+    ))
     kpi_defs = [
         ("Total Revenue",        "sum(Sales)"),
         ("Total Profit",         "sum(Profit)"),
@@ -394,15 +400,33 @@ def create_report(output_path: str):
         "the model is trained on the past and evaluated on genuinely unseen future observations."
     ), italic=True)
 
-    add_heading(doc, "10.2 Future Forecast Generation", level=2)
+    add_heading(doc, "10.2 Model Refit on All Historical Data", level=2)
     add_para(doc, (
-        "generate_forecast() iterates one month ahead at a time, feeding each prediction "
-        "back into the lag feature window for the next period. "
+        "After evaluation and model selection (step 10.1), the selected model architecture "
+        "is refit on ALL available historical observations using refit_selected_model(). "
+        "This ensures the final forecasting model benefits from the complete dataset, not "
+        "just the training split. The evaluation metrics reported in Section 11 are those "
+        "computed on the held-out test set — NOT on this refit model."
+    ))
+
+    add_heading(doc, "10.3 Future Forecast Generation", level=2)
+    add_para(doc, (
+        "generate_future_forecast() uses the refit model to produce future monthly sales "
+        "estimates. It iterates one month ahead at a time, feeding each prediction back "
+        "into the lag feature window for the next period. "
         "The forecast horizon is configurable (3, 6, or 12 months). "
         "Predicted sales values are clipped at 0 (sales cannot be negative)."
     ))
 
-    add_heading(doc, "10.3 Forecast Uncertainty", level=2)
+    add_heading(doc, "10.4 Backtest", level=2)
+    add_para(doc, (
+        "generate_backtest() produces predictions on the chronological TEST PERIOD ONLY — "
+        "observations the model did not see during training. It does NOT produce predictions "
+        "over the training period. The backtest is displayed in the dashboard forecast chart "
+        "to allow visual inspection of model accuracy on genuinely unseen data."
+    ))
+
+    add_heading(doc, "10.5 Forecast Uncertainty", level=2)
     add_para(doc, (
         "DISCLAIMER: Forecast values are estimates produced by the selected model and are "
         "subject to uncertainty. They are intended as planning aids, not guaranteed outcomes. "
@@ -440,10 +464,13 @@ def create_report(output_path: str):
         row.cells[2].text = role
 
     add_para(doc, (
-        "The model with the lowest MAE is selected as the final forecaster (select_best_model()). "
-        "The selected model is saved to models/sales_forecast_model.joblib using joblib. "
-        "The payload includes: trained model, model name, evaluation DataFrame, "
-        "feature column list, and training timestamp."
+        "The model with the lowest MAE is selected by select_best_model(). "
+        "The selected architecture is then refit on all historical data via refit_selected_model() "
+        "before future forecasting. The refit model is saved to models/sales_forecast_model.joblib "
+        "using joblib. The payload includes: model, model name, evaluation DataFrame (test-set metrics), "
+        "feature column list, dataset hash, and training timestamp. "
+        "The dataset hash enables staleness detection — the dashboard warns the user if the dataset "
+        "has changed since the model was trained."
     ))
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -455,9 +482,11 @@ def create_report(output_path: str):
         "The forecast chart displays three distinct series:"
     ))
     series = [
-        "ACTUAL — historical monthly sales values",
-        "BACKTEST — model predictions on the held-out test period (for visual error assessment)",
-        "FORECAST — future monthly predictions for the selected horizon (3, 6, or 12 months)",
+        "Actual Sales — full historical monthly sales values",
+        "Backtest Prediction (Test Period) — model predictions on the held-out test period only "
+        "(observations not used during training; displayed for visual accuracy assessment)",
+        "Future Forecast — iterative one-step-ahead predictions from the refit model "
+        "for the selected horizon (3, 6, or 12 months)",
     ]
     for s in series:
         add_bullet(doc, s)
